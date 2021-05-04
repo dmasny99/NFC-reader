@@ -1,26 +1,26 @@
-// MQTT and WIFI libs
+// библиотеки wifi и MQTT
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h> 
-// SPI libs and PN532 libs
+// библиотеки протокола передачи данных и библиотеки модуля
 #include <SPI.h>
 #include <PN532_SPI.h>
 #include <PN532.h>
 #include <NfcAdapter.h> 
-// wifi settings setup
+//параметры подключения wifi
 const char* ssid = "Masn_ural";
 const char* password = "xcGXFE2r";
-// yandex cloud settings
+// параметры подключения yandex cloud
 const char* mqttserver = "130.193.44.244"; //mqtt.cloud.yandex.net
 const char* yandexIoTCoredeviceId = "areslq41mged71mcd3be";
 const char* mqttpassword = "Passwordpassword123";
 const int mqttport=8883;
 
-
+// определение глобальных констант (топики)
 String warehouse_topic_test = "$devices/areslq41mged71mcd3be/events/test";
 String test_topic = "$devices/areslq41mged71mcd3be/events/test";
 String topicCommands = String("$devices/")+String(yandexIoTCoredeviceId)+String("/commands");
 String topicEvents = String("$devices/")+String(yandexIoTCoredeviceId)+String("/events");
-
+// корневой сертификат брокера яндексовского облака
 const char* test_root_ca = \
 "-----BEGIN CERTIFICATE-----\n \
 MIIFGTCCAwGgAwIBAgIQJMM7ZIy2SYxCBgK7WcFwnjANBgkqhkiG9w0BAQ0FADAf\
@@ -52,7 +52,7 @@ yjRCkJ0YagpeLxfV1l1ZJZaTPZvY9+ylHnWHhzlq0FzcrooSSsp4i44DB2K7O2ID\
 Pj78bnC5yCw8P5YylR45LdxLzLO68unoXOyFz1etGXzszw8lJI9LNubYxk77mK8H\
 LpuQKbSbIERsmR+QqQ==\
 -----END CERTIFICATE-----\n";
-
+//создание объектов класса
 WiFiClientSecure  net;
 PubSubClient client(net);
 BearSSL::X509List x509(test_root_ca);
@@ -61,86 +61,70 @@ NfcAdapter nfc = NfcAdapter(pn532spi); // creation nfc obj
 
 #define DEBUG_SERIAL Serial
 #define DEBUG_SERIAL_BAUDRATE 115200
-
+// объявление функции 
 void callback(char* topic, byte* payload, unsigned int length);
 
 void connect() {
   delay(5000);
-  DEBUG_SERIAL.print("Conecting to wifi ...");
+  DEBUG_SERIAL.print("Conecting to wifi ..."); // deb inf
   while (WiFi.status() != WL_CONNECTED) {
     DEBUG_SERIAL.print(".");
     delay(1000);
   }
-  DEBUG_SERIAL.println(" Connected");
-  net.setInsecure();
-  DEBUG_SERIAL.print("Connecting to Yandex IoT Core as");
-  DEBUG_SERIAL.print(yandexIoTCoredeviceId);
-  DEBUG_SERIAL.print(" ...");
+  DEBUG_SERIAL.println(" Connected"); // deb inf
+  net.setInsecure(); // отключаю проверку SSL тк авторизуюсь по логиину и паролю
+  DEBUG_SERIAL.print("Connecting to Yandex IoT Core as"); // deb inf
+  DEBUG_SERIAL.print(yandexIoTCoredeviceId); // deb inf
+  DEBUG_SERIAL.print(" ..."); // deb inf
   while (!client.connect("Esp8266Client", yandexIoTCoredeviceId, mqttpassword)) {
     DEBUG_SERIAL.print(".");
     delay(1000);
   }
-  DEBUG_SERIAL.println(" Connected");
-  ///
+  DEBUG_SERIAL.println(" Connected"); // deb inf
 
-  DEBUG_SERIAL.println("Subscribe to: ");
+  DEBUG_SERIAL.println("Subscribe to: "); // deb inf
   DEBUG_SERIAL.println(topicCommands.c_str());
-  if(client.subscribe(topicCommands.c_str())) {
-      DEBUG_SERIAL.println("subscribed");
+  if(client.subscribe(topicCommands.c_str())) {DEBUG_SERIAL.println("subscribed");}
   }
-  DEBUG_SERIAL.print("State ");
-  DEBUG_SERIAL.println(client.state());
-  }
-
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  DEBUG_SERIAL.print("debug in callback block"); //deb
   String topicString = String(topic);
-  DEBUG_SERIAL.print("Message received. Topic: ");  // deb
-  DEBUG_SERIAL.println(topicString.c_str()); //deb
+  DEBUG_SERIAL.print("Message received. Topic: ");  // deb inf
+  DEBUG_SERIAL.println(topicString.c_str()); //deb inf
   String payloadStr = "";
   for (int i=0;i<length;i++) {
     payloadStr += (char)payload[i];
   }
   DEBUG_SERIAL.println(payloadStr);
   if(payloadStr == "Run"){
-    delay(5000); // wait 5 sec
+    delay(5000); // жду 5 сек
     const char* data_from_tag = "";
-    if(nfc.tagPresent()){
-      DEBUG_SERIAL.println("debug1");
-      NfcTag tag = nfc.read();
-      if (tag.hasNdefMessage()) // every tag won't have a message
+    if(nfc.tagPresent()){ // если метка рядом то выполняю блок кода
+      NfcTag tag = nfc.read(); // считываю метку
+      if (tag.hasNdefMessage()) // если метка не пустая то выполняю блок кода
       {
-        DEBUG_SERIAL.println("debug2");
-        NdefMessage message = tag.getNdefMessage();
-        NdefRecord record = message.getRecord(0);
-        int payloadLength = record.getPayloadLength();
-        byte payload[payloadLength];
-        record.getPayload(payload);
-        for (int c = 0; c < payloadLength; c++) {data_from_tag += (char)payload[c];}
-        
-        if(client.publish(warehouse_topic_test.c_str(), payload,payloadLength)){
-          DEBUG_SERIAL.println("pub success");
-        }
-
+        NdefMessage message = tag.getNdefMessage(); //считываю все записи данных метки
+        NdefRecord record = message.getRecord(0); // беру только первую запись с метки
+        int payloadLength = record.getPayloadLength(); // нахожу длину сообщения
+        byte payload[payloadLength]; // создаю массив байтов длины полученного сообщения
+        record.getPayload(payload); // копирую полученное сообщение в этот массив
+        if(client.publish(warehouse_topic_test.c_str(), payload,payloadLength)){DEBUG_SERIAL.println("pub success");} // если публикация успешно то пишу в сериал порт deb inf
       }
     }
-   
   }
 }
 
 void setup() {
   DEBUG_SERIAL.begin(DEBUG_SERIAL_BAUDRATE);
   delay(10);
-  DEBUG_SERIAL.println("Device started");
-  WiFi.begin(ssid, password);
-  client.setServer(mqttserver, mqttport);
-  DEBUG_SERIAL.print("debug in setup block");
-  client.setCallback(callback);
-  client.setBufferSize(1024); // было 1024
-  client.setKeepAlive(15); // было 15
-  connect();
-  nfc.begin();
+  DEBUG_SERIAL.println("Device started"); //deb inf
+  WiFi.begin(ssid, password); // инициализирую настройки подключения к WIFI
+  client.setServer(mqttserver, mqttport); // инициализирую настройки подключения к облаку
+  client.setCallback(callback); // объявляю колбэк функцию (в ней описана реакция на получение сообщения в топик)
+  client.setBufferSize(1024); // размер буфера по дефолту
+  client.setKeepAlive(15); // время ожидания по дефолту (чем больше время, тем позже обнаружится разрыв соедиенения)
+  connect(); // подключаюсь к wifi, yandex cloud
+  nfc.begin(); // включаю pn532
 }
 
 
