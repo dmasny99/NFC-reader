@@ -1,4 +1,5 @@
 // библиотеки wifi и MQTT
+#include <string.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h> 
 // библиотеки протокола передачи данных и библиотеки модуля
@@ -7,13 +8,17 @@
 #include <PN532.h>
 #include <NfcAdapter.h> 
 //параметры подключения wifi
-const char* ssid = "Masn_ural";
-const char* password = "xcGXFE2r";
+const char* ssid = "Masny";
+const char* password = "5sJn8eXw";
 // параметры подключения yandex cloud
 const char* mqttserver = "130.193.44.244"; //mqtt.cloud.yandex.net
 const char* yandexIoTCoredeviceId = "areslq41mged71mcd3be";
 const char* mqttpassword = "Passwordpassword123";
 const int mqttport=8883;
+const char* not_found = "not found";
+const char* incorrect = "incorrect";
+const char* ok ="ok";
+
 
 // определение глобальных констант (топики)
 String warehouse_topic_test = "$devices/areslq41mged71mcd3be/events/test";
@@ -88,15 +93,19 @@ void connect() {
   }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  String topicString = String(topic);
+  String topicString = String(topic); // дебаг
   DEBUG_SERIAL.print("Message received. Topic: ");  // deb inf
   DEBUG_SERIAL.println(topicString.c_str()); //deb inf
   String payloadStr = "";
   for (int i=0;i<length;i++) {
     payloadStr += (char)payload[i];
   }
+  String command = payloadStr.substring(0,3); // строка вида run id N
   DEBUG_SERIAL.println(payloadStr);
-  if(payloadStr == "Run"){
+  String id = payloadStr.substring(7);
+  DEBUG_SERIAL.println(command);// дебаг
+  DEBUG_SERIAL.println(id);// дебаг
+  if(command = "run"){
     delay(5000); // жду 5 сек
     const char* data_from_tag = "";
     if(nfc.tagPresent()){ // если метка рядом то выполняю блок кода
@@ -108,10 +117,18 @@ void callback(char* topic, byte* payload, unsigned int length) {
         int payloadLength = record.getPayloadLength(); // нахожу длину сообщения
         byte payload[payloadLength]; // создаю массив байтов длины полученного сообщения
         record.getPayload(payload); // копирую полученное сообщение в этот массив
-        if(client.publish(warehouse_topic_test.c_str(), payload,payloadLength)){DEBUG_SERIAL.println("pub success");} // если публикация успешно то пишу в сериал порт deb inf
+        String tag_id = "";
+        for (int i=3;i<payloadLength;i++) {tag_id += (char)payload[i];} // метки записаны так ID N
+        if(id == tag_id.substring(3)){
+          client.publish(warehouse_topic_test.c_str(), ok);
+          DEBUG_SERIAL.println("pub success");}
+        else {client.publish(warehouse_topic_test.c_str(), incorrect);}
       }
+      else {client.publish(warehouse_topic_test.c_str(), incorrect);}
     }
+    else{client.publish(warehouse_topic_test.c_str(), not_found);}
   }
+  else {client.publish(warehouse_topic_test.c_str(), incorrect);}
 }
 
 void setup() {
